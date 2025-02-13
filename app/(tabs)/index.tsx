@@ -1,116 +1,150 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import {
-	Button,
-	FlatList,
+	Animated,
 	StyleSheet,
 	Text,
-	TextInput,
 	TouchableOpacity,
 	View
 } from 'react-native'
-import { CustomInput } from './CustomInput'
 
-type Task = {
-	text: string
-	completed: boolean
-}
+export default function Calculator() {
+	const [input, setInput] = useState('0')
+	const [result, setResult] = useState('')
+	const scaleAnim = useRef(new Animated.Value(1)).current
+	const equalAnim = useRef(new Animated.Value(0)).current
+	const colorAnim = useRef(new Animated.Value(0)).current // Animation for color
 
-export default function HomeScreen() {
-	const [task, setTask] = useState('')
-	const [tasks, setTasks] = useState<Task[]>([])
-	const [editingIndex, setEditingIndex] = useState<number | null>(null)
-	const [editedText, setEditedText] = useState('')
+	const handlePress = (value: string) => {
+		if (value === 'AC') {
+			setInput('0')
+			setResult('')
+		} else if (value === '⌫') {
+			setInput(input.length > 1 ? input.slice(0, -1) : '0')
+		} else if (value === '=') {
+			animateEqual()
+			try {
+				setResult(safeEval(input).toString())
+			} catch (error) {
+				setResult('Ошибка')
+			}
+		} else if (value === '%') {
+			setInput((parseFloat(input) / 100).toString())
+		} else if (value === '^') {
+			setInput(input + '**')
+		} else {
+			if (/[-+*/.^%]$/.test(input) && /[-+*/.^%]/.test(value)) {
+				return // Prevent multiple operators in a row
+			}
+			setInput(input === '0' ? value : input + value)
+		}
 
-	const handleAddTask = () => {
-		if (task.trim().length > 0) {
-			setTasks([...tasks, { text: task.trim(), completed: false }])
-			setTask('')
+		animatePress()
+		animateColor() // Trigger color animation
+	}
+
+	// Safe evaluation function
+	const safeEval = (expression: string) => {
+		// Only allow valid characters
+		const sanitized = expression.replace(/[^0-9+\-*/^().%]/g, '')
+		try {
+			return eval(sanitized) // Evaluate sanitized input
+		} catch (error) {
+			return 'Ошибка' // Return error if invalid calculation
 		}
 	}
 
-	const handleDeleteTask = (index: number) => {
-		const updatedTasks = tasks.filter((_, i) => i !== index)
-		setTasks(updatedTasks)
+	// Handle button press animation
+	const animatePress = () => {
+		Animated.sequence([
+			Animated.timing(scaleAnim, {
+				toValue: 0.9,
+				duration: 100,
+				useNativeDriver: true // Only use native driver for scale animation
+			}),
+			Animated.timing(scaleAnim, {
+				toValue: 1,
+				duration: 100,
+				useNativeDriver: true
+			})
+		]).start()
 	}
 
-	const toggleTaskCompletion = (index: number) => {
-		const updatedTasks = tasks.map((item, i) =>
-			i === index ? { ...item, completed: !item.completed } : item
+	// Handle equals button animation
+	const animateEqual = () => {
+		Animated.sequence([
+			Animated.timing(equalAnim, {
+				toValue: 360,
+				duration: 300,
+				useNativeDriver: true // Use native driver for rotation
+			}),
+			Animated.timing(equalAnim, {
+				toValue: 0,
+				duration: 0,
+				useNativeDriver: true
+			})
+		]).start()
+	}
+
+	// Handle color animation (triggered on each button press)
+	const animateColor = () => {
+		Animated.sequence([
+			Animated.timing(colorAnim, {
+				toValue: 1,
+				duration: 100,
+				useNativeDriver: true // Do not use native driver for color animation
+			}),
+			Animated.timing(colorAnim, {
+				toValue: 0,
+				duration: 100,
+				useNativeDriver: true // Reset color after animation
+			})
+		]).start()
+	}
+
+	// Render a calculator button
+	const renderButton = (value: string) => {
+		const animatedStyle =
+			value === '='
+				? {
+						transform: [
+							{
+								rotate: equalAnim.interpolate({
+									inputRange: [0, 360],
+									outputRange: ['0deg', '360deg']
+								})
+							}
+						]
+				  }
+				: { transform: [{ scale: scaleAnim }] }
+
+		// Color animation for button
+		const backgroundColor = colorAnim.interpolate({
+			inputRange: [0, 1],
+			outputRange: ['#FF0000', '#00FF00'] // Red to Green for a noticeable effect
+		}) as unknown as string
+
+		return (
+			<TouchableOpacity
+				key={value}
+				onPress={() => handlePress(value)}
+				style={[styles.button, { backgroundColor }]}
+			>
+				<Animated.Text style={[styles.buttonText, animatedStyle]}>
+					{value}
+				</Animated.Text>
+			</TouchableOpacity>
 		)
-		setTasks(updatedTasks)
-	}
-
-	const handleEditTask = (index: number, text: string) => {
-		setEditingIndex(index)
-		setEditedText(text)
-	}
-
-	const handleSaveEdit = (index: number) => {
-		const updatedTasks = tasks.map((item, i) =>
-			i === index ? { ...item, text: editedText } : item
-		)
-		setTasks(updatedTasks)
-		setEditingIndex(null)
-		setEditedText('')
 	}
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.inputContainer}>
-				<CustomInput
-					style={styles.input}
-					placeholder='Enter a task'
-					value={task}
-					onChangeText={setTask}
-				/>
-				<Button title='Add Task' onPress={handleAddTask} />
-			</View>
-			<FlatList
-				data={tasks}
-				renderItem={({ item, index }) => (
-					<View style={styles.taskContainer}>
-						{editingIndex === index ? (
-							<TextInput
-								style={styles.input}
-								value={editedText}
-								onChangeText={setEditedText}
-							/>
-						) : (
-							<TouchableOpacity
-								onPress={() => toggleTaskCompletion(index)}
-								style={[
-									styles.taskTextContainer,
-									item.completed && styles.completedTask
-								]}
-							>
-								<Text style={styles.taskText}>
-									{item.completed ? ' ✓ ' : ''}
-									{item.text}
-								</Text>
-							</TouchableOpacity>
-						)}
-
-						{editingIndex === index ? (
-							<Button title='Save' onPress={() => handleSaveEdit(index)} />
-						) : (
-							<>
-								<TouchableOpacity
-									onPress={() => handleEditTask(index, item.text)}
-									style={styles.editButton}
-								>
-									<Text style={styles.editText}>Edit</Text>
-								</TouchableOpacity>
-								<TouchableOpacity
-									onPress={() => handleDeleteTask(index)}
-									style={styles.deleteButton}
-								>
-									<Text style={styles.deleteText}>Delete</Text>
-								</TouchableOpacity>
-							</>
-						)}
-					</View>
-				)}
-			/>
+			<Text style={styles.input}>{input}</Text>
+			<Text style={styles.result}>{result}</Text>
+			<View style={styles.row}>{['AC', '⌫', '%', '/'].map(renderButton)}</View>
+			<View style={styles.row}>{['7', '8', '9', '*'].map(renderButton)}</View>
+			<View style={styles.row}>{['4', '5', '6', '-'].map(renderButton)}</View>
+			<View style={styles.row}>{['1', '2', '3', '+'].map(renderButton)}</View>
+			<View style={styles.row}>{['0', '.', '=', '^'].map(renderButton)}</View>
 		</View>
 	)
 }
@@ -118,58 +152,13 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#fff',
-		padding: 20
-	},
-	inputContainer: {
-		flexDirection: 'row',
+		justifyContent: 'center',
 		alignItems: 'center',
-		marginBottom: 20
+		backgroundColor: '#222'
 	},
-	input: {
-		flex: 1,
-		borderWidth: 1,
-		borderColor: '#ccc',
-		borderRadius: 5,
-		padding: 10,
-		marginRight: 10
-	},
-	taskContainer: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-		padding: 15,
-		borderBottomWidth: 1,
-		borderBottomColor: '#ccc'
-	},
-	taskTextContainer: {
-		flex: 1
-	},
-	taskText: {
-		fontSize: 16
-	},
-	completedTask: {
-		backgroundColor: '#d4edda',
-		borderRadius: 5,
-		padding: 5
-	},
-	editButton: {
-		backgroundColor: '#4CAF50',
-		padding: 10,
-		borderRadius: 5,
-		marginRight: 5
-	},
-	editText: {
-		color: '#fff',
-		fontWeight: 'bold'
-	},
-	deleteButton: {
-		backgroundColor: '#ff5252',
-		padding: 10,
-		borderRadius: 5
-	},
-	deleteText: {
-		color: '#fff',
-		fontWeight: 'bold'
-	}
+	input: { fontSize: 36, color: '#fff', marginBottom: 10 },
+	result: { fontSize: 24, color: '#888', marginBottom: 20 },
+	row: { flexDirection: 'row' },
+	button: { padding: 20, margin: 5, borderRadius: 10 },
+	buttonText: { fontSize: 24, color: '#fff' }
 })
